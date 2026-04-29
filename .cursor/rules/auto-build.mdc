@@ -1,0 +1,24 @@
+---
+description: Auto-build ContentUploader.exe after Python file changes
+alwaysApply: true
+---
+
+# Auto-Build Rule
+
+After any prompt that modifies `.py` files in this project, automatically:
+
+1. Run PyInstaller build:
+```
+pyinstaller --onefile --windowed --name "ContentUploader" --icon=assets/icon.ico main.py
+```
+
+2. Copy the result to Desktop:
+```
+Copy-Item "dist\ContentUploader.exe" "C:\Users\lukys\OneDrive\Desktop\ContentUploader.exe" -Force
+```
+
+3. Report build success or failure in the response.
+
+Working directory for build: `c:\Users\lukys\Content`
+
+If `assets/icon.ico` does not exist yet, omit the `--icon` flag.

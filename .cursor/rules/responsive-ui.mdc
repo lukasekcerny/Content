@@ -1,0 +1,47 @@
+# Responsive UI Rules
+
+## Core Principle
+No content may ever overflow, clip, or be hidden. All UI must adapt fluidly to window size.
+
+## Fixed Sizes
+- NEVER use `setFixedSize`, `setFixedWidth`, or `setFixedHeight` on content-area widgets.
+- Allowed exceptions: sidebar width (260px), avatar button (circle decoration), indicator bars (3px wide).
+- For everything else, use `setMinimumSize` + `setMaximumSize` pairs with appropriate `QSizePolicy`.
+
+## Text Overflow
+- Every `QLabel` must have EITHER `setWordWrap(True)` OR text elision via `fontMetrics().elidedText()`.
+- When eliding, always set `setToolTip(full_text)` so the full text is accessible on hover.
+- Badge/chip widgets must have `setMaximumWidth(180)` and elide text that exceeds it.
+
+## Grid Layouts
+- Grid column count must be calculated dynamically: `cols = max(1, available_width // (card_width + spacing))`.
+- Recalculate on `resizeEvent` (debounced with QTimer, ~50ms).
+- Never hardcode column count.
+
+## Scroll Areas
+- Every page that can grow vertically must be wrapped in `QScrollArea` with `setWidgetResizable(True)`.
+- Horizontal scroll must be disabled (`ScrollBarAlwaysOff`) -- content must reflow instead.
+- Exceptions: sidebar (fixed platform count, log panel fills remaining space).
+
+## Two-Column Layouts
+- Left columns use `setMinimumWidth` + `setMaximumWidth` (not `setFixedWidth`).
+- Right columns use stretch factor `1`.
+- Preview images scale via `resizeEvent` using min/max constraints, never fixed pixel sizes.
+
+## Page Transitions
+- Use `AnimatedStackedWidget` for all `QStackedWidget` page changes.
+- Forward navigation (grid->detail, grid->profile): slide right, 200ms OutCubic.
+- Back navigation: slide left, 200ms OutCubic.
+
+## Dialogs
+- Dialogs use `setMinimumSize` + `resize()`, never `setFixedSize`.
+- Error labels use `setWordWrap(True)` and `adjustSize()` on content change.
+
+## Progress / Status Rows
+- Platform name labels: `setMinimumWidth(50)` + `setMaximumWidth(100)` + elide + tooltip.
+- Status labels: same min/max pattern + elide + tooltip.
+- Progress bar gets stretch factor `1` to fill remaining space.
+
+## Log Panels
+- Log panels use `setMinimumHeight(80-100)` with stretch factor, no `setMaximumHeight`.
+- They fill available vertical space in their container.

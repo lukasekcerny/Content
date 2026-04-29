@@ -1,0 +1,57 @@
+---
+description: UI component styling rules for Graphite Black theme
+globs: "**/ui/**/*.py,**/theme.py,**/components/**/*.py"
+alwaysApply: false
+---
+
+# UI Component Style Guide
+
+## Cards & Boxes
+- background: bg_card (#151617)
+- border: 1px solid border_soft (#232629)
+- border-radius: 12-14px
+- hover: bg_card_hover (#1B1D1F)
+- active/selected: bg_card_active (#202326) + border_default (#2C3034)
+- No colored backgrounds, no glow effects
+
+## Buttons
+- Primary: bg #E7E9EC, text #111214, hover #F1F2F4, pressed #D7DBDF, no border
+- Secondary: bg bg_card_hover, text text_primary, border border_default
+- Ghost: transparent bg, text text_secondary, hover bg #1A1C1E
+- Danger: bg danger_bg (#211616), text danger_text (#D68E8E), border #5A2F2F
+
+## Inputs
+- background: bg_input (#121314)
+- border: border_soft (#232629)
+- text: text_primary (#F2F2F2)
+- placeholder: text_muted (#8A9097)
+- focus: border_strong (#3A3F45) + slight bg lighten, NO blue outline
+
+## Sidebar
+- background: bg_panel (#101112)
+- item default: transparent
+- item hover: bg_card (#151617)
+- item active: bg_card_active (#202326) + left indicator #5B6168 + bold text
+
+## Badges/Chips (status colors only)
+- Draft/Scheduled/Processing/Paused: neutral gray (neutral_state_bg + neutral_state_text)
+- Published: success_bg + success_text + success border
+- Failed: danger_bg + danger_text + danger border
+- Queued/Retry/Warning: warning_bg + warning_text + warning border
+
+## Progress Bars
+- Track: bg_input (#121314), height 4px cards / 6px detail, radius 2px
+- Phase 1 (import): border_strong (#3A3F45) fill
+- Phase 2 (upload): warning (#9A6B36) fill (orange)
+- Complete: success (#4E7F5F) fill (green), smooth 200ms transition
+- Failed: danger (#8B4A4A) fill (red)
+
+## Log Panel
+- Monospace font, bg_shell (#0B0B0C)
+- Timestamps: text_muted
+- Status lines colored by state (success/warning/danger/neutral)
+
+## Never Use
+- Neon accents, colored focus rings, brand-color CTA buttons
+- Colored sidebar navigation, colored tabs without state meaning
+- Colored boxes "just to be interesting"

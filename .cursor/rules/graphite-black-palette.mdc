@@ -1,0 +1,47 @@
+---
+description: Graphite Black color palette - mandatory hex values for all UI code
+alwaysApply: true
+---
+
+# Graphite Black Color Palette
+
+All UI code must use these exact hex values. No exceptions.
+
+## Backgrounds
+- bg_app: #060606
+- bg_shell: #0B0B0C
+- bg_panel: #101112
+- bg_card: #151617
+- bg_card_hover: #1B1D1F
+- bg_card_active: #202326
+- bg_input: #121314
+- bg_popup: #17191B
+
+## Borders
+- border_soft: #232629
+- border_default: #2C3034
+- border_strong: #3A3F45
+
+## Text
+- text_primary: #F2F2F2
+- text_secondary: #C9CDD2
+- text_muted: #8A9097
+- text_disabled: #62686F
+
+## Status Colors (only for state meaning)
+- success: #4E7F5F / success_text: #8FC7A1 / success_bg: #162019
+- warning: #9A6B36 / warning_text: #D8A46B / warning_bg: #211A14
+- danger: #8B4A4A / danger_text: #D68E8E / danger_bg: #211616
+- neutral_state: #5E666F / neutral_state_text: #A9B0B7 / neutral_state_bg: #181A1C
+
+## Buttons
+- primary_bg: #E7E9EC / primary_text: #111214 / primary_hover: #F1F2F4 / primary_pressed: #D7DBDF
+- sidebar active indicator: #5B6168
+
+## Forbidden
+Never use: neon accents, blue focus rings, purple/cyan/brand-color CTA, colored tabs without state meaning.
+
+## Rule: 85/10/5
+- 85% black/gray/anthracite surfaces
+- 10% lighter neutral contrast
+- 5% status colors
