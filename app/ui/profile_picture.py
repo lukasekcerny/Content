@@ -149,6 +149,7 @@ class ProfilePicturePage(QWidget):
     back_clicked = Signal()
     avatar_changed = Signal(str)
     log_message = Signal(str, str)
+    login_requested = Signal(str)
 
     def __init__(self, db: Database, data_dir: str, parent=None):
         super().__init__(parent)
@@ -223,6 +224,7 @@ class ProfilePicturePage(QWidget):
 
         self._platform_checks: dict[str, QCheckBox] = {}
         self._platform_badges: dict[str, Badge] = {}
+        self._platform_login_btns: dict[str, GhostButton] = {}
 
         for pid, pdata in PLATFORMS.items():
             row = QHBoxLayout()
@@ -235,8 +237,21 @@ class ProfilePicturePage(QWidget):
             badge = Badge("Connected", "success")
             self._platform_badges[pid] = badge
 
+            login_btn = GhostButton("Log in")
+            login_btn.setFixedHeight(26)
+            login_btn.setStyleSheet(
+                f"QPushButton {{ color: {C.text_secondary}; font-size: 11px; padding: 2px 12px;"
+                f"background: transparent; border: 1px solid {C.border_default}; border-radius: 6px; }}"
+                f"QPushButton:hover {{ background: {C.bg_card}; border-color: {C.border_strong};"
+                f"color: {C.text_primary}; }}"
+            )
+            login_btn.clicked.connect(lambda _checked=False, p=pid: self.login_requested.emit(p))
+            login_btn.hide()
+            self._platform_login_btns[pid] = login_btn
+
             row.addWidget(cb)
             row.addWidget(badge)
+            row.addWidget(login_btn)
             row.addStretch()
             right_col.addLayout(row)
 
@@ -301,14 +316,18 @@ class ProfilePicturePage(QWidget):
 
         for pid, cb in self._platform_checks.items():
             badge = self._platform_badges[pid]
+            login_btn = self._platform_login_btns[pid]
             if pid in connected_ids:
                 cb.setEnabled(True)
                 cb.setChecked(True)
                 badge.set_text_and_variant("Connected", "success")
+                badge.show()
+                login_btn.hide()
             else:
                 cb.setEnabled(False)
                 cb.setChecked(False)
-                badge.set_text_and_variant("Not connected", "neutral")
+                badge.hide()
+                login_btn.show()
 
     def _set_preview(self, path: str):
         if os.path.isfile(path):
