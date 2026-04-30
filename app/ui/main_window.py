@@ -232,6 +232,7 @@ class MainWindow(QMainWindow):
         self._profile_page.back_clicked.connect(lambda: self._navigate("grid"))
         self._profile_page.avatar_changed.connect(self._on_avatar_changed)
         self._profile_page.log_message.connect(self._log)
+        self._profile_page.login_requested.connect(self._on_platform_connect)
         self._add_page("profile", self._profile_page)
 
         self._stack.setCurrentWidget(self._grid_page)
@@ -299,6 +300,7 @@ class MainWindow(QMainWindow):
             email = creds[0] if creds and creds[0] else platform_id
             self.db.set_platform_connected(platform_id, email)
             self.sidebar.refresh_platforms()
+            self._profile_page.refresh()
             self.sidebar.log_panel.log(f"{platform_id}: Already connected (session active)", "success")
             return
 
@@ -362,6 +364,7 @@ class MainWindow(QMainWindow):
         if success:
             self.db.set_platform_connected(platform_id, email)
             self.sidebar.refresh_platforms()
+            self._profile_page.refresh()
             self.sidebar.log_panel.log(f"{platform_id}: Connected as {email}", "success")
             if dialog:
                 dialog.show_success()
