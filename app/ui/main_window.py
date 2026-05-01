@@ -1,4 +1,5 @@
 import os
+import logging
 import threading
 
 from PySide6.QtWidgets import (
@@ -14,6 +15,40 @@ from app.ui.sidebar import Sidebar
 from app.ui.login_dialog import LoginDialog, CookieConsentDialog
 from app.ui.components.animated_stack import AnimatedStackedWidget
 from app.browser.manager import BrowserManager
+
+
+class _QtLogBridge(QObject):
+    """Carries log records from any thread to the Qt main thread via signal."""
+
+    record = Signal(str, str)
+
+
+class _QtLogHandler(logging.Handler):
+    """Logging handler that re-emits each record through a Qt signal.
+
+    Used so the per-step ``logger.info`` calls inside the auth / browser
+    code show up live in the sidebar's Activity Log instead of vanishing
+    into the file log only.
+    """
+
+    def __init__(self, bridge: "_QtLogBridge"):
+        super().__init__()
+        self._bridge = bridge
+
+    def emit(self, record: logging.LogRecord) -> None:
+        try:
+            msg = self.format(record)
+            level_map = {
+                "DEBUG": "info",
+                "INFO": "info",
+                "WARNING": "warning",
+                "ERROR": "error",
+                "CRITICAL": "error",
+            }
+            level = level_map.get(record.levelname, "info")
+            self._bridge.record.emit(msg, level)
+        except Exception:
+            pass
 
 
 class AvatarButton(QPushButton):
@@ -136,6 +171,13 @@ class MainWindow(QMainWindow):
 
         self._cookie_bridge = CookieConsentBridge(self)
 
+        self._log_bridge = _QtLogBridge(self)
+        self._log_handler = _QtLogHandler(self._log_bridge)
+        self._log_handler.setLevel(logging.INFO)
+        self._log_handler.setFormatter(logging.Formatter("%(message)s"))
+        for logger_name in ("app.auth.tiktok", "app.browser.manager"):
+            logging.getLogger(logger_name).addHandler(self._log_handler)
+
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(900, 600)
         self.resize(1280, 800)
@@ -166,6 +208,12 @@ class MainWindow(QMainWindow):
         self._pages: dict[str, QWidget] = {}
         self._page_order: list[str] = []
         self._init_pages()
+
+        # Connect the log bridge AFTER the sidebar / log panel exist so the
+        # very first ``logger.info`` calls already land in the UI.
+        self._log_bridge.record.connect(
+            self.sidebar.log_panel.log, Qt.ConnectionType.QueuedConnection,
+        )
 
     def _build_header(self) -> QFrame:
         header = QFrame()
@@ -254,12 +302,16 @@ class MainWindow(QMainWindow):
     # --- Platform connect flow ---
 
     def _on_platform_connect(self, platform_id: str):
-        # User explicitly clicked Connect / Log in: always show the login dialog
-        # and let them enter credentials. We deliberately skip any auto session
-        # probe here because (a) the per-platform `is_logged_in` heuristics are
-        # not reliable enough to silently mark a platform as Connected, and
-        # (b) the user expects an explicit username/password prompt.
-        self.sidebar.get_item(platform_id).set_disconnected()
+        # User explicitly clicked Connect / Reconnect / Retry: always show the
+        # login dialog. We don't pre-mutate the badge here -- the row already
+        # reflects the current DB state (Connected / Not connected / Failed)
+        # and we only want to swap to "Connecting..." once the dialog is
+        # actually submitted and the worker starts running.
+        if platform_id in self._login_threads and self._login_threads[platform_id].isRunning():
+            self.sidebar.log_panel.log(
+                f"{platform_id}: A login attempt is already in progress.", "warning",
+            )
+            return
         self._show_login_dialog(platform_id)
 
     def _show_login_dialog(self, platform_id: str):
@@ -293,6 +345,7 @@ class MainWindow(QMainWindow):
         else:
             delete_credentials(platform_id)
 
+        self.sidebar.get_item(platform_id).set_reconnecting()
         self.sidebar.log_panel.log(f"Connecting to {platform_id}...", "info")
 
         thread = QThread()
@@ -321,6 +374,8 @@ class MainWindow(QMainWindow):
             self.sidebar.refresh_platforms()
             self._profile_page.refresh()
             self.sidebar.log_panel.log(f"{platform_id}: Connected as {email}", "success")
+            if msg:
+                self.sidebar.log_panel.log(f"{platform_id}: {msg}", "info")
             if dialog:
                 dialog.show_success()
         else:

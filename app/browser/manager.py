@@ -9,7 +9,22 @@ from queue import Queue
 
 from PySide6.QtCore import QThread, QObject, Signal
 
+from app.browser.human import REALISTIC_USER_AGENT, apply_stealth
+
 logger = logging.getLogger(__name__)
+
+
+# Platforms that must be driven with a VISIBLE browser window.
+# TikTok in particular is very aggressive about flagging headless sessions
+# (the OAuth via Google flow basically fails silently in headless mode), so
+# we always show the window for it. The persistent context still lives in
+# `<data_dir>/browser/<platform>` so the user stays logged in across runs.
+PLATFORM_HEADLESS: dict[str, bool] = {
+    "tiktok": False,
+    "instagram": True,
+    "facebook": True,
+    "youtube": True,
+}
 
 
 def _find_chrome_executable() -> Optional[str]:
@@ -111,13 +126,20 @@ class BrowserThread(QThread):
         profile_dir = os.path.join(self._data_dir, "browser", platform_id)
         os.makedirs(profile_dir, exist_ok=True)
 
+        headless = PLATFORM_HEADLESS.get(platform_id, True)
+
         launch_kwargs = dict(
             user_data_dir=profile_dir,
-            headless=True,
-            viewport={"width": 1280, "height": 800},
+            headless=headless,
+            viewport={"width": 1366, "height": 820},
+            user_agent=REALISTIC_USER_AGENT,
+            locale="en-US",
             args=[
                 "--disable-blink-features=AutomationControlled",
                 "--no-sandbox",
+                "--disable-features=IsolateOrigins,site-per-process",
+                "--disable-infobars",
+                "--start-maximized" if not headless else "--window-size=1366,820",
             ],
         )
 
@@ -138,13 +160,38 @@ class BrowserThread(QThread):
                 ctx = self._playwright.chromium.launch_persistent_context(**launch_kwargs)
         self._contexts[platform_id] = ctx
 
+        apply_stealth(ctx)
+
         if ctx.pages:
             page = ctx.pages[0]
         else:
             page = ctx.new_page()
         self._pages[platform_id] = page
-        logger.info("Persistent context created for %s", platform_id)
+        logger.info("Persistent context created for %s (headless=%s)", platform_id, headless)
         return page
+
+    def release_platform_context(self, platform_id: str) -> None:
+        """Close and forget the persistent context for a platform.
+
+        Used after a flow that wants the browser window visibly closed
+        (e.g. the TikTok login flow that ends with a screenshot). The
+        cookies / local storage stay on disk in the profile dir, so the
+        next ``get_page(platform_id)`` re-opens the same logged-in
+        session.
+        """
+        page = self._pages.pop(platform_id, None)
+        if page is not None:
+            try:
+                page.close()
+            except Exception:
+                pass
+        ctx = self._contexts.pop(platform_id, None)
+        if ctx is not None:
+            try:
+                ctx.close()
+                logger.info("Released context for %s", platform_id)
+            except Exception:
+                logger.debug("Error releasing context for %s", platform_id, exc_info=True)
 
     def _shutdown_contexts(self):
         for pid, ctx in list(self._contexts.items()):
@@ -191,6 +238,19 @@ class BrowserManager:
     def get_page(self, platform_id: str):
         """Convenience: get a page for a platform (blocks until ready)."""
         return self.execute(lambda bt: bt.get_page(platform_id))
+
+    def release_platform_context(self, platform_id: str) -> None:
+        """Close and forget the persistent context for a platform.
+
+        Safe to call from any thread; the actual close runs on the
+        BrowserThread because all Playwright state lives there.
+        """
+        if not self._thread or not self._thread.isRunning():
+            return
+        try:
+            self.execute(lambda bt: bt.release_platform_context(platform_id), timeout=15)
+        except Exception:
+            logger.debug("release_platform_context(%s) failed", platform_id, exc_info=True)
 
     def shutdown(self):
         if self._thread and self._thread.isRunning():
