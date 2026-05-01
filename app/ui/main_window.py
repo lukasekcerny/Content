@@ -61,23 +61,6 @@ class AvatarButton(QPushButton):
         return result
 
 
-class SessionCheckWorker(QObject):
-    """Checks if a platform session is still active in a background thread."""
-
-    finished = Signal(str, bool)
-
-    def __init__(self, browser_manager: BrowserManager, platform_id: str):
-        super().__init__()
-        self._bm = browser_manager
-        self._platform_id = platform_id
-
-    def run(self):
-        from app.auth.session_manager import SessionManager
-        manager = SessionManager(self._bm)
-        active = manager.check_session(self._platform_id)
-        self.finished.emit(self._platform_id, active)
-
-
 class CookieConsentBridge(QObject):
     """Thread-safe bridge: worker thread requests cookie consent, main thread shows dialog."""
 
@@ -147,8 +130,6 @@ class MainWindow(QMainWindow):
         self._login_threads: dict[str, QThread] = {}
         self._login_workers: dict[str, LoginWorker] = {}
         self._login_dialogs: dict[str, LoginDialog] = {}
-        self._check_threads: dict[str, QThread] = {}
-        self._check_workers: dict[str, SessionCheckWorker] = {}
 
         self._browser_manager = BrowserManager.get_instance(data_dir)
         self._browser_manager.start()
@@ -273,37 +254,11 @@ class MainWindow(QMainWindow):
     # --- Platform connect flow ---
 
     def _on_platform_connect(self, platform_id: str):
-        self.sidebar.log_panel.log(f"Checking {platform_id} session...", "info")
-        self.sidebar.get_item(platform_id).set_reconnecting()
-
-        thread = QThread()
-        worker = SessionCheckWorker(self._browser_manager, platform_id)
-        worker.moveToThread(thread)
-        thread.started.connect(worker.run)
-        worker.finished.connect(self._on_session_check_done)
-        worker.finished.connect(thread.quit)
-        thread.finished.connect(lambda pid=platform_id: self._cleanup_check(pid))
-
-        self._check_threads[platform_id] = thread
-        self._check_workers[platform_id] = worker
-        thread.start()
-
-    def _cleanup_check(self, platform_id: str):
-        self._check_threads.pop(platform_id, None)
-        self._check_workers.pop(platform_id, None)
-
-    def _on_session_check_done(self, platform_id: str, active: bool):
-        from app.auth.token_store import get_credentials
-
-        if active:
-            creds = get_credentials(platform_id)
-            email = creds[0] if creds and creds[0] else platform_id
-            self.db.set_platform_connected(platform_id, email)
-            self.sidebar.refresh_platforms()
-            self._profile_page.refresh()
-            self.sidebar.log_panel.log(f"{platform_id}: Already connected (session active)", "success")
-            return
-
+        # User explicitly clicked Connect / Log in: always show the login dialog
+        # and let them enter credentials. We deliberately skip any auto session
+        # probe here because (a) the per-platform `is_logged_in` heuristics are
+        # not reliable enough to silently mark a platform as Connected, and
+        # (b) the user expects an explicit username/password prompt.
         self.sidebar.get_item(platform_id).set_disconnected()
         self._show_login_dialog(platform_id)
 

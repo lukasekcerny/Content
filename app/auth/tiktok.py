@@ -48,9 +48,35 @@ class TikTokAuth(AuthProvider):
             page.goto("https://www.tiktok.com", wait_until="domcontentloaded", timeout=15000)
             page.wait_for_timeout(2000)
             url = page.url
-            content = page.content().lower()
-            if "login" not in url and ("profile" in content or "upload" in content):
-                return True
+            if "login" in url or "/signup" in url:
+                return False
+
+            # A visible "Log in" link/button is a strong signal that the user is NOT logged in.
+            for selector in (
+                'a[href*="/login"]',
+                'button:has-text("Log in")',
+                'a:has-text("Log in")',
+            ):
+                try:
+                    loc = page.locator(selector)
+                    if loc.count() > 0 and loc.first.is_visible():
+                        return False
+                except Exception:
+                    continue
+
+            # An avatar / profile link present means the user IS logged in.
+            for selector in (
+                '[data-e2e="nav-profile"]',
+                '[data-e2e="profile-icon"]',
+                'a[href^="/@"]',
+            ):
+                try:
+                    loc = page.locator(selector)
+                    if loc.count() > 0 and loc.first.is_visible():
+                        return True
+                except Exception:
+                    continue
+
             return False
         except Exception:
             return False

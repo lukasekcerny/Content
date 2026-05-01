@@ -1,0 +1,109 @@
+---
+description: Git branch and commit conventions, including Cursor attribution
+alwaysApply: true
+---
+
+# Git Workflow Rule
+
+Every code change you ship must be on a descriptive branch and committed with a message that accurately describes the work, including a clear note that it was authored with Cursor.
+
+## 1. Branch naming
+
+Before starting any non-trivial change, create (or switch to) a branch whose name describes what the change actually does. Do NOT work directly on `main` / `master`.
+
+Format: `<type>/<short-kebab-case-summary>`
+
+Allowed `<type>` prefixes:
+- `feat/`     - new user-facing feature or capability
+- `fix/`      - bug fix
+- `refactor/` - internal restructuring without behavior change
+- `ui/`       - visual/styling-only changes
+- `chore/`    - build, deps, configs, scripts, tooling
+- `docs/`     - documentation only
+
+Rules:
+- Use lowercase kebab-case after the prefix.
+- Keep the summary short (2-6 words) but specific.
+- Reflect WHAT the change does, not WHY (the commit body covers why).
+
+Good examples:
+- `fix/connect-button-shows-login-dialog`
+- `feat/profile-picture-page`
+- `ui/sidebar-graphite-palette`
+- `refactor/session-manager-thread-safety`
+
+Bad examples:
+- `update`, `changes`, `fix-stuff`, `wip`
+- `feat/asdf`, `john-branch`, `2024-01-15`
+- branch names with spaces, uppercase, or punctuation other than `/` and `-`
+
+How to create the branch:
+- If the user has not specified one, pick a name yourself based on the task and run `git checkout -b <branch-name>` BEFORE making code changes.
+- If you are already on a feature branch whose name still fits the new task, keep using it.
+- Never silently switch branches without telling the user.
+
+## 2. Commit messages
+
+Every commit message must:
+1. Have a short imperative subject line (max ~72 chars) that summarizes the change.
+2. Have a body that lists, in concrete terms, every meaningful thing that was done in this commit. One bullet per logical change.
+3. End with the Cursor attribution trailer (see section 3).
+
+Format:
+
+```
+<type>: <imperative summary>
+
+- <what was changed / added / removed, file or area level>
+- <another concrete change>
+- <another concrete change>
+
+Authored with Cursor.
+Co-Authored-By: Cursor <noreply@cursor.com>
+```
+
+`<type>` matches the branch type prefix when possible (`feat`, `fix`, `refactor`, `ui`, `chore`, `docs`).
+
+Rules for the body:
+- Describe the actual edits, not vague intentions. "Added X dialog" is good. "Improved login" is not.
+- Cover ALL substantive things touched in this commit; do not omit a file just because it was a small tweak.
+- If a change is non-obvious, also state WHY in one short clause.
+- Wrap body lines at ~100 chars.
+
+## 3. Cursor attribution (mandatory)
+
+Every commit you create MUST include this attribution at the end of the commit message body:
+
+```
+Authored with Cursor.
+Co-Authored-By: Cursor <noreply@cursor.com>
+```
+
+This trailer is required so the project history clearly shows which work was done with Cursor. Do not omit it, do not abbreviate it, do not move it above the body.
+
+## 4. How to actually run the commit
+
+- Always pass the message via a HEREDOC so multi-line formatting is preserved:
+
+```
+git commit -m "$(cat <<'EOF'
+fix: connect button now opens the login dialog
+
+- removed the auto session-check from `_on_platform_connect` in `app/ui/main_window.py`
+- always opens `LoginDialog` so the user enters credentials explicitly
+- reset stale `platforms.connected = 1` rows on startup when no keyring credentials exist
+
+Authored with Cursor.
+Co-Authored-By: Cursor <noreply@cursor.com>
+EOF
+)"
+```
+
+- Never use `git commit -m "single line"` for non-trivial changes - the body and the Cursor trailer are mandatory.
+- Never use `git commit --amend` to retroactively rewrite history that has already been pushed, unless the user explicitly asks.
+
+## 5. When to create a commit
+
+- Only commit when the user explicitly asks ("commit this", "make a commit", etc.).
+- Never auto-commit just because a task finished.
+- If the user asks for a commit but there are unrelated changes in the working tree, ask before staging them.
