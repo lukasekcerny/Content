@@ -1,5 +1,7 @@
 import sys
 import os
+import logging
+from logging.handlers import RotatingFileHandler
 
 os.environ["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
 
@@ -17,6 +19,28 @@ def get_app_data_dir() -> str:
     base = os.path.join(os.path.expanduser("~"), ".content-uploader")
     os.makedirs(base, exist_ok=True)
     return base
+
+
+def setup_logging(data_dir: str) -> str:
+    """Send all logger.info / logger.exception output to a rotating log file.
+
+    PyInstaller ``--windowed`` drops stdout/stderr, so without this the per-step
+    auth logs vanish. The log lives at ``<data_dir>/app.log`` and is the file we
+    ask the user to attach when something goes wrong.
+    """
+    log_path = os.path.join(data_dir, "app.log")
+    root = logging.getLogger()
+    root.setLevel(logging.INFO)
+    for h in list(root.handlers):
+        root.removeHandler(h)
+    file_handler = RotatingFileHandler(
+        log_path, maxBytes=2_000_000, backupCount=3, encoding="utf-8",
+    )
+    file_handler.setFormatter(
+        logging.Formatter("%(asctime)s [%(levelname)s] %(name)s: %(message)s")
+    )
+    root.addHandler(file_handler)
+    return log_path
 
 
 def reset_stale_platform_connections(db: Database) -> None:
@@ -43,6 +67,9 @@ def main():
     app.setApplicationName("ContentUploader")
 
     data_dir = get_app_data_dir()
+    log_path = setup_logging(data_dir)
+    logging.getLogger(__name__).info("ContentUploader starting; log file: %s", log_path)
+
     db = Database(os.path.join(data_dir, "content.db"))
     reset_stale_platform_connections(db)
 

@@ -57,21 +57,28 @@ class PlatformItem(QFrame):
 
     def set_connected(self, username: str):
         self._badge.set_text_and_variant("Connected", "success")
-        self._connect_btn.hide()
+        self._connect_btn.show()
+        self._connect_btn.setEnabled(True)
+        self._connect_btn.setText("Reconnect")
         self._name.setStyleSheet(f"color: {C.text_primary}; font-size: 13px; font-weight: 500; background: transparent;")
 
     def set_disconnected(self):
         self._badge.set_text_and_variant("Not connected", "neutral")
         self._connect_btn.show()
+        self._connect_btn.setEnabled(True)
+        self._connect_btn.setText("Connect")
         self._name.setStyleSheet(f"color: {C.text_secondary}; font-size: 13px; background: transparent;")
 
     def set_reconnecting(self):
-        self._badge.set_text_and_variant("Reconnecting...", "warning")
-        self._connect_btn.hide()
+        self._badge.set_text_and_variant("Connecting...", "warning")
+        self._connect_btn.show()
+        self._connect_btn.setEnabled(False)
+        self._connect_btn.setText("Working...")
 
     def set_failed(self, reason: str = "Login failed"):
         self._badge.set_text_and_variant(reason, "danger")
         self._connect_btn.show()
+        self._connect_btn.setEnabled(True)
         self._connect_btn.setText("Retry")
 
     def set_active(self, active: bool):
