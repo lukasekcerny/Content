@@ -1,3 +1,9 @@
+---
+description: Responsive UI rules - no fixed sizes on content, no overflow, fluid layouts
+globs: "**/ui/**/*.py,**/theme.py"
+alwaysApply: false
+---
+
 # Responsive UI Rules
 
 ## Core Principle
