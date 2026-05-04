@@ -26,6 +26,41 @@ class TikTokBrowser(BrowserAction):
 
         logger.info("TikTok profile picture changed")
 
+        if caption:
+            self._update_bio(page, caption)
+
+    def _update_bio(self, page, bio_text: str):
+        """Set the bio on the TikTok edit-profile page."""
+        try:
+            page.goto(
+                "https://www.tiktok.com/setting/edit-profile",
+                wait_until="domcontentloaded", timeout=30000,
+            )
+            page.wait_for_timeout(2500)
+
+            bio_textarea = page.locator(
+                'textarea[maxlength="80"], textarea[placeholder*="Bio"], textarea[aria-label*="Bio"]'
+            )
+            if bio_textarea.count() == 0:
+                logger.warning("TikTok bio textarea not found - skipping bio update")
+                return
+
+            bio_textarea.first.fill(bio_text)
+            page.wait_for_timeout(800)
+
+            for label in ("Save", "Apply", "Done"):
+                try:
+                    btn = page.locator(f'button:has-text("{label}")')
+                    if btn.count() > 0:
+                        btn.first.click()
+                        page.wait_for_timeout(2500)
+                        break
+                except Exception:
+                    continue
+            logger.info("TikTok bio updated")
+        except Exception:
+            logger.exception("TikTok bio update failed")
+
     def upload_content(self, page, file_path: str, metadata: dict,
                        progress_callback=None) -> tuple[bool, str]:
         try:

@@ -26,6 +26,41 @@ class InstagramBrowser(BrowserAction):
 
         logger.info("Instagram profile picture changed")
 
+        if caption:
+            self._update_bio(page, caption)
+
+    def _update_bio(self, page, bio_text: str):
+        """Set the bio on the Instagram profile edit page."""
+        try:
+            page.goto(
+                "https://www.instagram.com/accounts/edit/",
+                wait_until="domcontentloaded", timeout=30000,
+            )
+            page.wait_for_timeout(2500)
+
+            bio_textarea = page.locator(
+                'textarea[name="biography"], textarea[aria-label="Bio"]'
+            )
+            if bio_textarea.count() == 0:
+                logger.warning("Instagram bio textarea not found - skipping bio update")
+                return
+
+            bio_textarea.first.fill(bio_text)
+            page.wait_for_timeout(800)
+
+            for label in ("Submit", "Save", "Done"):
+                try:
+                    btn = page.locator(f'button:has-text("{label}")')
+                    if btn.count() > 0:
+                        btn.first.click()
+                        page.wait_for_timeout(2500)
+                        break
+                except Exception:
+                    continue
+            logger.info("Instagram bio updated")
+        except Exception:
+            logger.exception("Instagram bio update failed")
+
     def upload_content(self, page, file_path: str, metadata: dict,
                        progress_callback=None) -> tuple[bool, str]:
         try:

@@ -15,13 +15,19 @@ class SessionManager:
 
     def login_platform(self, platform_id: str, email: str, password: str,
                        cookie_callback: Optional[CookieCallback] = None) -> tuple[bool, str]:
+        logger.info("SessionManager: starting login for platform=%s", platform_id)
         try:
             def _do_login(bt):
                 page = bt.get_page(platform_id)
                 auth = self._get_auth_provider(platform_id)
                 return auth.login(page, email, password, cookie_callback=cookie_callback)
 
-            return self._bm.execute(_do_login, timeout=120)
+            result = self._bm.execute(_do_login, timeout=120)
+            if result[0]:
+                logger.info("SessionManager: login succeeded for platform=%s", platform_id)
+            else:
+                logger.warning("SessionManager: login returned failure for platform=%s: %s", platform_id, result[1])
+            return result
         except Exception as e:
             logger.exception("Login failed for %s", platform_id)
             return False, str(e)

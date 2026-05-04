@@ -1,6 +1,7 @@
 import sys
 import os
 import logging
+import threading
 from logging.handlers import RotatingFileHandler
 
 os.environ["PLAYWRIGHT_SKIP_BROWSER_DOWNLOAD"] = "1"
@@ -13,6 +14,30 @@ from app.theme import build_stylesheet
 from app.db.database import Database
 from app.auth.token_store import get_credentials
 from app.constants import PLATFORMS
+
+
+def install_crash_guards():
+    """Install global hooks so the app never silently dies on unhandled exceptions."""
+    root_logger = logging.getLogger()
+
+    def _excepthook(exc_type, exc_value, exc_traceback):
+        if issubclass(exc_type, KeyboardInterrupt):
+            sys.__excepthook__(exc_type, exc_value, exc_traceback)
+            return
+        root_logger.critical(
+            "Uncaught exception on main thread",
+            exc_info=(exc_type, exc_value, exc_traceback),
+        )
+
+    sys.excepthook = _excepthook
+
+    def _thread_excepthook(args):
+        root_logger.critical(
+            "Uncaught exception on thread %r", args.thread.name if args.thread else "?",
+            exc_info=(args.exc_type, args.exc_value, args.exc_traceback),
+        )
+
+    threading.excepthook = _thread_excepthook
 
 
 def get_app_data_dir() -> str:
@@ -65,10 +90,21 @@ def main():
     QApplication.setAttribute(Qt.ApplicationAttribute.AA_ShareOpenGLContexts)
     app = QApplication(sys.argv)
     app.setApplicationName("ContentUploader")
+    app.setQuitOnLastWindowClosed(True)
 
     data_dir = get_app_data_dir()
     log_path = setup_logging(data_dir)
-    logging.getLogger(__name__).info("ContentUploader starting; log file: %s", log_path)
+    install_crash_guards()
+    root_logger = logging.getLogger(__name__)
+    root_logger.info("ContentUploader starting; log file: %s", log_path)
+
+    def _on_about_to_quit():
+        import traceback
+        root_logger.info("QApplication.aboutToQuit fired")
+        stack = "".join(traceback.format_stack())
+        root_logger.debug("aboutToQuit stack:\n%s", stack)
+
+    app.aboutToQuit.connect(_on_about_to_quit)
 
     db = Database(os.path.join(data_dir, "content.db"))
     reset_stale_platform_connections(db)

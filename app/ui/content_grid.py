@@ -1,3 +1,4 @@
+import logging
 import os
 import shutil
 
@@ -13,6 +14,8 @@ from app.db.database import Database
 from app.db.models import Content
 from app.ui.components.card import ContentCard
 from app.ui.components.progress_bar import ContentProgressBar
+
+logger = logging.getLogger(__name__)
 
 try:
     import filetype
@@ -47,6 +50,7 @@ class FileImporter(QObject):
 
     def run(self):
         try:
+            logger.info("FileImporter: starting import of %s", self.file_path)
             fname = os.path.basename(self.file_path)
             media_dir = os.path.join(self.data_dir, "media")
             thumb_dir = os.path.join(self.data_dir, "thumbnails")
@@ -110,9 +114,11 @@ class FileImporter(QObject):
             )
 
             self.progress.emit(self.file_path, 100)
+            logger.info("FileImporter: import complete %s -> %s", self.file_path, dest)
             self.finished.emit(self.file_path, content)
 
         except Exception as e:
+            logger.error("FileImporter: import failed %s: %s", self.file_path, e)
             self.error.emit(self.file_path, str(e))
 
 

@@ -1,20 +1,24 @@
+import logging
 import os
 
 from PySide6.QtWidgets import (
-    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDialog,
+    QWidget, QVBoxLayout, QHBoxLayout, QLabel, QDialog, QPushButton,
     QCheckBox, QFrame, QScrollArea, QSizePolicy, QGridLayout,
 )
 from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QMouseEvent
 from PySide6.QtCore import Qt, Signal, QThread, QObject
 
-from app.constants import COLORS as C, PLATFORMS
+from app.constants import COLORS as C, PLATFORMS, DEFAULT_EMULATOR_CONFIG
 from app.db.database import Database
 from app.ui.components.button import PrimaryButton, GhostButton
 from app.ui.components.badge import Badge
-from app.ui.components.log_panel import LogPanel
 from app.ui.components.input_field import TextArea
 
-CAPTION_SUPPORTED_PLATFORMS = {"facebook"}
+logger = logging.getLogger(__name__)
+
+BIO_SUPPORTED_PLATFORMS = {"instagram", "tiktok", "youtube"}
+
+PHONE_PP_LAUNCH_ORDER = ["youtube", "facebook", "tiktok", "instagram"]
 
 
 class ClickableLabel(QLabel):
@@ -157,6 +161,10 @@ class ProfilePicturePage(QWidget):
         self.data_dir = data_dir
         self._image_path = None
         self._thread = None
+        self._worker = None
+        self._app_mode: str = "web"
+        self._phone_thread = None
+        self._phone_worker = None
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -237,13 +245,10 @@ class ProfilePicturePage(QWidget):
             badge = Badge("Connected", "success")
             self._platform_badges[pid] = badge
 
-            login_btn = GhostButton("Log in")
+            login_btn = QPushButton("Log in")
             login_btn.setFixedHeight(26)
             login_btn.setStyleSheet(
-                f"QPushButton {{ color: {C.text_secondary}; font-size: 11px; padding: 2px 12px;"
-                f"background: transparent; border: 1px solid {C.border_default}; border-radius: 6px; }}"
-                f"QPushButton:hover {{ background: {C.bg_card}; border-color: {C.border_strong};"
-                f"color: {C.text_primary}; }}"
+                f"QPushButton {{ font-size: 11px; padding: 2px 12px; }}"
             )
             login_btn.clicked.connect(lambda _checked=False, p=pid: self.login_requested.emit(p))
             login_btn.hide()
@@ -255,23 +260,25 @@ class ProfilePicturePage(QWidget):
             row.addStretch()
             right_col.addLayout(row)
 
-        right_col.addSpacing(8)
+        right_col.addSpacing(12)
 
-        caption_label = QLabel("Caption / Description")
-        caption_label.setStyleSheet(
+        bio_label = QLabel("Bio")
+        bio_label.setStyleSheet(
             f"color: {C.text_primary}; font-size: 13px; font-weight: 500; background: transparent;"
         )
-        right_col.addWidget(caption_label)
+        right_col.addWidget(bio_label)
 
-        self._caption_input = TextArea("Add a caption for platforms that support it...")
-        self._caption_input.setMinimumHeight(60)
-        self._caption_input.setMaximumHeight(120)
+        self._caption_input = TextArea(
+            "Add a bio / description (Instagram bio, TikTok bio, YouTube channel description)"
+        )
+        self._caption_input.setMinimumHeight(80)
+        self._caption_input.setMaximumHeight(140)
         right_col.addWidget(self._caption_input)
 
-        supported = [PLATFORMS[p]["display_name"] for p in CAPTION_SUPPORTED_PLATFORMS if p in PLATFORMS]
-        unsupported = [pdata["display_name"] for pid, pdata in PLATFORMS.items() if pid not in CAPTION_SUPPORTED_PLATFORMS]
+        supported = [PLATFORMS[p]["display_name"] for p in BIO_SUPPORTED_PLATFORMS if p in PLATFORMS]
+        unsupported = [pdata["display_name"] for pid, pdata in PLATFORMS.items() if pid not in BIO_SUPPORTED_PLATFORMS]
         caption_info = QLabel(
-            f"Caption will be posted on: {', '.join(supported)}\n"
+            f"Bio will be set on: {', '.join(supported)}\n"
             f"Not supported: {', '.join(unsupported)}"
         )
         caption_info.setWordWrap(True)
@@ -280,22 +287,12 @@ class ProfilePicturePage(QWidget):
         )
         right_col.addWidget(caption_info)
 
-        right_col.addSpacing(8)
+        right_col.addSpacing(16)
 
-        self._apply_btn = PrimaryButton("Apply Changes")
+        self._apply_btn = PrimaryButton("Apply Changes (Web)")
         self._apply_btn.clicked.connect(self._apply_changes)
         right_col.addWidget(self._apply_btn)
 
-        right_col.addSpacing(16)
-
-        log_label = QLabel("Log")
-        log_label.setStyleSheet(f"color: {C.text_muted}; font-size: 11px; background: transparent;")
-        right_col.addWidget(log_label)
-
-        self._log = LogPanel()
-        self._log.setMinimumHeight(80)
-        self._log.setMaximumHeight(200)
-        right_col.addWidget(self._log)
         right_col.addStretch()
 
         right_widget = QWidget()
@@ -360,14 +357,20 @@ class ProfilePicturePage(QWidget):
         self.db.set_profile_picture(file_path)
         self.avatar_changed.emit(file_path)
 
+    def set_mode(self, mode: str):
+        if mode not in ("web", "phone"):
+            return
+        self._app_mode = mode
+        self._apply_btn.setText("Apply Changes (Phone)" if mode == "phone" else "Apply Changes (Web)")
+
     def _apply_changes(self):
         if not self._image_path:
-            self._log.log("No image selected.", "warning")
+            self.log_message.emit("Profile pic: No image selected.", "warning")
             return
 
         selected = [pid for pid, cb in self._platform_checks.items() if cb.isChecked() and cb.isEnabled()]
         if not selected:
-            self._log.log("No platforms selected.", "warning")
+            self.log_message.emit("Profile pic: No platforms selected.", "warning")
             return
 
         caption = self._caption_input.toPlainText().strip()
@@ -375,9 +378,16 @@ class ProfilePicturePage(QWidget):
         self._apply_btn.setEnabled(False)
         self._apply_btn.setText("Applying...")
 
+        if self._app_mode == "phone":
+            self._apply_via_phone(selected, self._image_path, caption)
+        else:
+            self._apply_via_web(selected, self._image_path, caption)
+
+    def _apply_via_web(self, selected: list[str], image_path: str, caption: str):
+        self.log_message.emit("Profile pic: starting web flow", "info")
         self._thread = QThread()
         worker = ProfilePicWorker(
-            self.data_dir, self._image_path, selected, caption=caption,
+            self.data_dir, image_path, selected, caption=caption,
         )
         self._worker = worker
         worker.moveToThread(self._thread)
@@ -385,15 +395,87 @@ class ProfilePicturePage(QWidget):
         worker.progress.connect(self._on_worker_progress)
         worker.finished.connect(self._on_worker_done)
         worker.finished.connect(self._thread.quit)
+        worker.finished.connect(worker.deleteLater)
         self._thread.finished.connect(self._thread.deleteLater)
+        self._thread.finished.connect(self._on_thread_finished)
         self._thread.start()
 
     def _on_worker_progress(self, platform_id: str, message: str, level: str):
         pname = PLATFORMS.get(platform_id, {}).get("display_name", platform_id)
-        self._log.log(f"{pname}: {message}", level)
         self.log_message.emit(f"Profile pic - {pname}: {message}", level)
 
     def _on_worker_done(self):
         self._apply_btn.setEnabled(True)
-        self._apply_btn.setText("Apply Changes")
-        self._log.log("Done.", "info")
+        self._apply_btn.setText("Apply Changes (Phone)" if self._app_mode == "phone" else "Apply Changes (Web)")
+        self.log_message.emit("Profile pic: done.", "info")
+
+    def _on_thread_finished(self):
+        self._thread = None
+        self._worker = None
+
+    def _apply_via_phone(self, selected: list[str], image_path: str, caption: str):
+        from app.mobile.emulator_config import AndroidEmulatorConfig, MobilePlatform
+        from app.mobile.profile_pic_phone_worker import ProfilePicPhoneWorker
+
+        platforms = []
+        for pid in PHONE_PP_LAUNCH_ORDER:
+            if pid not in selected:
+                continue
+            for p in MobilePlatform:
+                if p.platform_id == pid:
+                    platforms.append(p)
+                    break
+
+        if not platforms:
+            self.log_message.emit("Profile pic: No matching mobile platforms.", "warning")
+            self._apply_btn.setEnabled(True)
+            self._apply_btn.setText("Apply Changes (Phone)")
+            return
+
+        self.log_message.emit("Profile pic: starting phone flow", "info")
+        config = AndroidEmulatorConfig(avd_name=DEFAULT_EMULATOR_CONFIG["avd_name"])
+
+        thread = QThread()
+        worker = ProfilePicPhoneWorker(
+            config=config,
+            platforms=platforms,
+            image_path=image_path,
+            bio=caption,
+            data_dir=self.data_dir,
+        )
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.status_update.connect(
+            lambda msg, lvl: self.log_message.emit(f"Profile pic: {msg}", lvl)
+        )
+        worker.confirmation_needed.connect(self._on_phone_confirmation_needed)
+        worker.finished.connect(self._on_phone_done)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_phone_thread_finished)
+
+        self._phone_thread = thread
+        self._phone_worker = worker
+        thread.start()
+
+    def _on_phone_confirmation_needed(self, label: str, reason: str):
+        from app.ui.continue_confirm_dialog import ContinueConfirmDialog
+        logger.info("Profile phone flow paused on %s: %s", label, reason)
+        dialog = ContinueConfirmDialog(platform_name=label, reason=reason, parent=self)
+        should_continue = dialog.exec() == dialog.DialogCode.Accepted and dialog.should_continue
+        logger.info("User decision for %s: %s", label, "Continue" if should_continue else "Cancel")
+        if self._phone_worker is not None:
+            self._phone_worker.confirmation_received.emit(bool(should_continue))
+
+    def _on_phone_done(self, results: list):
+        self._apply_btn.setEnabled(True)
+        self._apply_btn.setText("Apply Changes (Phone)")
+        for r in results:
+            level = "success" if r.success else "error"
+            self.log_message.emit(f"Profile pic - {r.platform.display_name}: {r.message}", level)
+
+    def _on_phone_thread_finished(self):
+        logger.info("Profile pic phone worker thread finished; clearing references")
+        self._phone_thread = None
+        self._phone_worker = None

@@ -28,10 +28,7 @@ class PasswordField(QWidget):
         self._toggle.setFixedWidth(50)
         self._toggle.setCursor(Qt.CursorShape.PointingHandCursor)
         self._toggle.setStyleSheet(
-            f"QPushButton {{ background-color: {C.bg_card}; color: {C.text_muted};"
-            f"border: 1px solid {C.border_soft}; border-radius: 6px;"
-            f"font-size: 11px; padding: 4px 6px; }}"
-            f"QPushButton:hover {{ background-color: {C.bg_card_hover}; color: {C.text_primary}; }}"
+            f"QPushButton {{ font-size: 11px; padding: 4px 6px; }}"
         )
         self._toggle.clicked.connect(self._on_toggle)
         layout.addWidget(self._toggle)

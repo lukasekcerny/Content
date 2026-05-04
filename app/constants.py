@@ -44,11 +44,26 @@ class Colors:
     neutral_state_text = "#A9B0B7"
     neutral_state_bg = "#181A1C"
 
-    # Primary button
-    primary_bg = "#E7E9EC"
-    primary_text = "#111214"
-    primary_hover = "#F1F2F4"
-    primary_pressed = "#D7DBDF"
+    # Primary button (cyan accent)
+    primary_bg = "#1E2A2E"
+    primary_text = "#5ECFDF"
+    primary_hover = "#253538"
+    primary_pressed = "#1A2428"
+    primary_border = "#3A8A96"
+
+    # Confirm button (green accent)
+    confirm_bg = "#1A2B1F"
+    confirm_text = "#5ED88B"
+    confirm_hover = "#213A28"
+    confirm_pressed = "#162418"
+    confirm_border = "#3A8A56"
+
+    # Danger button (red accent)
+    danger_btn_bg = "#2B1A1A"
+    danger_btn_text = "#E06060"
+    danger_btn_hover = "#3A2121"
+    danger_btn_pressed = "#241616"
+    danger_btn_border = "#8A3A3A"
 
     # Sidebar active indicator
     sidebar_indicator = "#5B6168"
@@ -83,6 +98,25 @@ PLATFORMS = {
         "display_name": "YouTube",
         "login_url": "https://accounts.google.com/",
         "base_url": "https://studio.youtube.com",
+    },
+}
+
+# ---------------------------------------------------------------------------
+# Android Emulator defaults
+# TODO: Add settings page for adb_path, emulator_path, avd_name, device_id, package_names
+# ---------------------------------------------------------------------------
+DEFAULT_EMULATOR_CONFIG = {
+    "adb_path": None,
+    "emulator_path": None,
+    "avd_name": "Content",
+    "device_id": None,
+    "startup_timeout_seconds": 90,
+    "command_timeout_seconds": 20,
+    "platform_packages": {
+        "tiktok": "com.zhiliaoapp.musically",
+        "facebook": "com.facebook.katana",
+        "instagram": "com.instagram.android",
+        "youtube": "com.google.android.youtube",
     },
 }
 

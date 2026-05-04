@@ -134,19 +134,19 @@ def build_stylesheet() -> str:
     /* ===== Buttons ===== */
     QPushButton {{
         background-color: {C.bg_card_hover};
-        color: {C.text_primary};
-        border: 1px solid {C.border_default};
+        color: {C.primary_text};
+        border: 1px solid {C.primary_border};
         border-radius: 8px;
         padding: 8px 16px;
         font-weight: 500;
         font-size: 13px;
     }}
     QPushButton:hover {{
-        background-color: {C.bg_card_active};
-        border-color: {C.border_strong};
+        background-color: {C.primary_hover};
+        border-color: {C.primary_text};
     }}
     QPushButton:pressed {{
-        background-color: {C.bg_card};
+        background-color: {C.primary_pressed};
     }}
     QPushButton:disabled {{
         color: {C.text_disabled};
@@ -157,18 +157,36 @@ def build_stylesheet() -> str:
     QPushButton[role="primary"] {{
         background-color: {C.primary_bg};
         color: {C.primary_text};
-        border: none;
+        border: 1px solid {C.primary_border};
+        border-radius: 8px;
         font-weight: 600;
     }}
     QPushButton[role="primary"]:hover {{
         background-color: {C.primary_hover};
+        border-color: {C.primary_text};
     }}
     QPushButton[role="primary"]:pressed {{
         background-color: {C.primary_pressed};
     }}
     QPushButton[role="primary"]:disabled {{
-        background-color: {C.border_default};
+        background-color: {C.bg_card};
         color: {C.text_disabled};
+        border-color: {C.border_soft};
+    }}
+
+    QPushButton[role="confirm"] {{
+        background-color: {C.confirm_bg};
+        color: {C.confirm_text};
+        border: 1px solid {C.confirm_border};
+        border-radius: 8px;
+        font-weight: 600;
+    }}
+    QPushButton[role="confirm"]:hover {{
+        background-color: {C.confirm_hover};
+        border-color: {C.confirm_text};
+    }}
+    QPushButton[role="confirm"]:pressed {{
+        background-color: {C.confirm_pressed};
     }}
 
     QPushButton[role="ghost"] {{
@@ -181,13 +199,17 @@ def build_stylesheet() -> str:
     }}
 
     QPushButton[role="danger"] {{
-        background-color: {C.danger_bg};
-        color: {C.danger_text};
-        border: 1px solid #5A2F2F;
+        background-color: {C.danger_btn_bg};
+        color: {C.danger_btn_text};
+        border: 1px solid {C.danger_btn_border};
+        border-radius: 8px;
     }}
     QPushButton[role="danger"]:hover {{
-        background-color: {C.danger};
-        color: {C.text_primary};
+        background-color: {C.danger_btn_hover};
+        border-color: {C.danger_btn_text};
+    }}
+    QPushButton[role="danger"]:pressed {{
+        background-color: {C.danger_btn_pressed};
     }}
 
     /* ===== Inputs ===== */

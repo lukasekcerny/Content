@@ -42,6 +42,47 @@ class YouTubeBrowser(BrowserAction):
 
         logger.info("YouTube profile picture changed")
 
+        if caption:
+            self._update_bio(page, caption)
+
+    def _update_bio(self, page, bio_text: str):
+        """Set the channel description (the YouTube equivalent of a bio).
+
+        Channel description lives in YouTube Studio at
+        ``studio.youtube.com/channel/UC/editing/details``.
+        """
+        try:
+            page.goto(
+                "https://studio.youtube.com/channel/UC/editing/details",
+                wait_until="domcontentloaded", timeout=30000,
+            )
+            page.wait_for_timeout(3500)
+
+            desc_textarea = page.locator(
+                'textarea[aria-label="Description"], '
+                '#description-textarea textarea, '
+                'ytcp-form-input-container[id="description"] textarea'
+            )
+            if desc_textarea.count() == 0:
+                logger.warning("YouTube channel description textarea not found")
+                return
+
+            desc_textarea.first.fill(bio_text)
+            page.wait_for_timeout(800)
+
+            for label in ("PUBLISH", "Publish", "SAVE", "Save"):
+                try:
+                    btn = page.locator(f'button:has-text("{label}")')
+                    if btn.count() > 0:
+                        btn.first.click()
+                        page.wait_for_timeout(3000)
+                        break
+                except Exception:
+                    continue
+            logger.info("YouTube channel description updated")
+        except Exception:
+            logger.exception("YouTube bio (description) update failed")
+
     def upload_content(self, page, file_path: str, metadata: dict,
                        progress_callback=None) -> tuple[bool, str]:
         try:

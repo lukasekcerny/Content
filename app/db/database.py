@@ -1,19 +1,27 @@
+import logging
 import sqlite3
 from typing import Optional
 
 from app.db.models import Platform, Content, Post, ProfilePicture
 from app.constants import PLATFORMS
 
+logger = logging.getLogger(__name__)
+
 
 class Database:
     def __init__(self, db_path: str):
         self._path = db_path
-        self._conn = sqlite3.connect(db_path, check_same_thread=False)
-        self._conn.row_factory = sqlite3.Row
-        self._conn.execute("PRAGMA journal_mode=WAL")
-        self._conn.execute("PRAGMA foreign_keys=ON")
-        self._create_tables()
-        self._seed_platforms()
+        try:
+            self._conn = sqlite3.connect(db_path, check_same_thread=False)
+            self._conn.row_factory = sqlite3.Row
+            self._conn.execute("PRAGMA journal_mode=WAL")
+            self._conn.execute("PRAGMA foreign_keys=ON")
+            self._create_tables()
+            self._seed_platforms()
+            logger.info("Database opened: %s", db_path)
+        except Exception as e:
+            logger.error("Failed to open database %s: %s", db_path, e)
+            raise
 
     def _create_tables(self):
         cur = self._conn.cursor()

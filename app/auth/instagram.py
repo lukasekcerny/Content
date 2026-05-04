@@ -14,15 +14,21 @@ class InstagramAuth(AuthProvider):
     def login(self, page, email: str, password: str,
               cookie_callback: Optional[CookieCallback] = None) -> tuple[bool, str]:
         try:
+            logger.info("[instagram] Starting login for %s", email)
+
             if self.is_logged_in(page):
+                logger.info("[instagram] Already logged in")
                 return True, "Already logged in to Instagram"
 
+            logger.info("[instagram] Navigating to login page")
             page.goto(self.get_login_url(), wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(2000)
 
+            logger.info("[instagram] Handling cookies")
             self._handle_cookies(page, cookie_callback)
             page.wait_for_timeout(1000)
 
+            logger.info("[instagram] Filling credentials")
             page.wait_for_selector('input[name="username"]', timeout=15000)
             page.fill('input[name="username"]', email)
             page.wait_for_timeout(300)
@@ -30,6 +36,7 @@ class InstagramAuth(AuthProvider):
             page.fill('input[name="password"]', password)
             page.wait_for_timeout(300)
 
+            logger.info("[instagram] Submitting login form")
             page.click('button[type="submit"]')
             page.wait_for_load_state("networkidle", timeout=15000)
             page.wait_for_timeout(3000)
@@ -44,7 +51,9 @@ class InstagramAuth(AuthProvider):
                     break
 
             if self.is_logged_in(page):
+                logger.info("[instagram] Login successful")
                 return True, "Successfully logged in to Instagram"
+            logger.warning("[instagram] Login failed - session not detected after submit")
             return False, "Login failed - check credentials"
 
         except Exception as e:

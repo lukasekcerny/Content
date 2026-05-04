@@ -9,6 +9,13 @@ class PrimaryButton(QPushButton):
         self.setCursor(Qt.CursorShape.PointingHandCursor)
 
 
+class ConfirmButton(QPushButton):
+    def __init__(self, text: str = "", parent=None):
+        super().__init__(text, parent)
+        self.setProperty("role", "confirm")
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+
+
 class GhostButton(QPushButton):
     def __init__(self, text: str = "", parent=None):
         super().__init__(text, parent)

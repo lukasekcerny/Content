@@ -14,15 +14,21 @@ class FacebookAuth(AuthProvider):
     def login(self, page, email: str, password: str,
               cookie_callback: Optional[CookieCallback] = None) -> tuple[bool, str]:
         try:
+            logger.info("[facebook] Starting login for %s", email)
+
             if self.is_logged_in(page):
+                logger.info("[facebook] Already logged in")
                 return True, "Already logged in to Facebook"
 
+            logger.info("[facebook] Navigating to login page")
             page.goto(self.get_login_url(), wait_until="domcontentloaded", timeout=30000)
             page.wait_for_timeout(2000)
 
+            logger.info("[facebook] Handling cookies")
             self._handle_cookies(page, cookie_callback)
             page.wait_for_timeout(1000)
 
+            logger.info("[facebook] Filling credentials")
             page.wait_for_selector('#email', timeout=15000)
             page.fill('#email', email)
             page.wait_for_timeout(300)
@@ -30,12 +36,15 @@ class FacebookAuth(AuthProvider):
             page.fill('#pass', password)
             page.wait_for_timeout(300)
 
+            logger.info("[facebook] Submitting login form")
             page.click('button[name="login"]')
             page.wait_for_load_state("networkidle", timeout=15000)
             page.wait_for_timeout(3000)
 
             if self.is_logged_in(page):
+                logger.info("[facebook] Login successful")
                 return True, "Successfully logged in to Facebook"
+            logger.warning("[facebook] Login failed - session not detected after submit")
             return False, "Login failed - check credentials"
 
         except Exception as e:

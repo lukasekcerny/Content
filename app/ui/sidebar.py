@@ -41,12 +41,9 @@ class PlatformItem(QFrame):
         self._badge = Badge("Not connected", "neutral")
 
         self._connect_btn = QPushButton("Connect")
-        self._connect_btn.setProperty("role", "ghost")
         self._connect_btn.setFixedHeight(28)
         self._connect_btn.setStyleSheet(
-            f"QPushButton {{ color: {C.text_muted}; font-size: 11px; padding: 2px 8px;"
-            f"background: transparent; border: 1px solid {C.border_soft}; border-radius: 6px; }}"
-            f"QPushButton:hover {{ background: {C.bg_card}; border-color: {C.border_default}; }}"
+            f"QPushButton {{ font-size: 11px; padding: 2px 8px; }}"
         )
         self._connect_btn.clicked.connect(lambda: self.connect_clicked.emit(self.platform_id))
 
@@ -100,6 +97,8 @@ class Sidebar(QFrame):
     """Left sidebar: platform list + log panel."""
 
     platform_connect = Signal(str)
+    emulator_clicked = Signal()
+    app_log_clicked = Signal()
 
     def __init__(self, db: Database, parent=None):
         super().__init__(parent)
@@ -126,6 +125,28 @@ class Sidebar(QFrame):
             item.connect_clicked.connect(self.platform_connect.emit)
             self._platform_items[pid] = item
             layout.addWidget(item)
+
+        layout.addSpacing(12)
+
+        self._emulator_btn = QPushButton("Mobile Emulator")
+        self._emulator_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._emulator_btn.setStyleSheet(
+            f"QPushButton {{ font-size: 12px; font-weight: 500;"
+            f"padding: 6px 12px; margin: 0 12px; }}"
+        )
+        self._emulator_btn.clicked.connect(self.emulator_clicked.emit)
+        layout.addWidget(self._emulator_btn)
+
+        layout.addSpacing(6)
+
+        self._applog_btn = QPushButton("App Log")
+        self._applog_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._applog_btn.setStyleSheet(
+            f"QPushButton {{ font-size: 12px; font-weight: 500;"
+            f"padding: 6px 12px; margin: 0 12px; }}"
+        )
+        self._applog_btn.clicked.connect(self.app_log_clicked.emit)
+        layout.addWidget(self._applog_btn)
 
         layout.addStretch(1)
 

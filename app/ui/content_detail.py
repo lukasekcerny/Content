@@ -1,3 +1,4 @@
+import logging
 import os
 
 from PySide6.QtWidgets import (
@@ -5,15 +6,17 @@ from PySide6.QtWidgets import (
     QFrame, QPushButton, QCheckBox, QSizePolicy,
 )
 from PySide6.QtGui import QPixmap, QResizeEvent
-from PySide6.QtCore import Qt, Signal
+from PySide6.QtCore import Qt, Signal, QThread
 
-from app.constants import COLORS as C, PLATFORMS, CONTENT_TYPES
+from app.constants import COLORS as C, PLATFORMS, CONTENT_TYPES, DEFAULT_EMULATOR_CONFIG
 from app.db.database import Database
 from app.db.models import Post
 from app.ui.components.button import PrimaryButton, GhostButton
 from app.ui.components.input_field import InputField, TextArea
 from app.ui.components.progress_bar import PlatformProgressRow
 from app.ui.components.badge import Badge
+
+logger = logging.getLogger(__name__)
 
 
 class PlatformTargetWidget(QFrame):
@@ -133,6 +136,7 @@ class ContentDetailPage(QWidget):
         self._content_id = None
         self._target_widgets: list[PlatformTargetWidget] = []
         self._current_pixmap: QPixmap | None = None
+        self._app_mode: str = "web"
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(20, 16, 20, 16)
@@ -202,7 +206,7 @@ class ContentDetailPage(QWidget):
         btn_row = QHBoxLayout()
         btn_row.setSpacing(8)
 
-        self._post_btn = PrimaryButton("Post Now")
+        self._post_btn = PrimaryButton("Post Now (Web)")
         self._post_btn.clicked.connect(self._on_post_now)
 
         self._schedule_btn = QPushButton("Schedule")
@@ -312,36 +316,165 @@ class ContentDetailPage(QWidget):
             self._targets_container.addWidget(no_targets)
             self._target_widgets.append(no_targets)
 
+    def set_mode(self, mode: str):
+        if mode not in ("web", "phone"):
+            return
+        self._app_mode = mode
+        self._post_btn.setText("Post Now (Phone)" if mode == "phone" else "Post Now (Web)")
+        logger.info("ContentDetailPage mode set to: %s", mode)
+
     def _on_post_now(self):
         if not self._content_id:
             return
+
+        checked = [
+            tw for tw in self._target_widgets
+            if isinstance(tw, PlatformTargetWidget) and tw.is_checked()
+        ]
+        if not checked:
+            self.log_message.emit("Select at least one platform target.", "warning")
+            return
+
         content = self.db.get_content(self._content_id)
         if content:
             content.title = self._title_input.text()
             content.description = self._desc_input.text()
             self.db.update_content(content)
 
-        for tw in self._target_widgets:
-            if not isinstance(tw, PlatformTargetWidget) or not tw.is_checked():
-                continue
+        if self._app_mode == "phone":
+            logger.info("Post Now via PHONE mode for content_id=%s", self._content_id)
+            self._post_via_emulator(checked)
+        else:
+            logger.info("Post Now via WEB mode for content_id=%s", self._content_id)
+            self._post_via_web(checked)
+
+    def _post_via_web(self, targets: list):
+        from app.upload.base import start_upload
+
+        for tw in targets:
             data = tw.get_post_data()
-            post = Post(
-                content_id=self._content_id,
-                platform_id=data["platform_id"],
-                content_type=data["content_type"],
-                status="uploading",
-                caption=data.get("caption", ""),
-                title=data.get("title", ""),
-                description=data.get("description", ""),
-                tags=data.get("tags", ""),
-            )
-            post_id = self.db.add_post(post)
+            existing = self._find_existing_post(data["platform_id"], data["content_type"])
+            if existing:
+                self._update_post_fields(existing, data)
+                post_id = existing.id
+            else:
+                post = Post(
+                    content_id=self._content_id,
+                    platform_id=data["platform_id"],
+                    content_type=data["content_type"],
+                    status="draft",
+                    caption=data.get("caption", ""),
+                    title=data.get("title", ""),
+                    description=data.get("description", ""),
+                    tags=data.get("tags", ""),
+                )
+                post_id = self.db.add_post(post)
+
             tw.show_progress()
-            tw.progress_row.set_progress(10, "upload", "Starting...")
+            tw.progress_row.set_progress(0, "upload", "Queued...")
             self.log_message.emit(
-                f"Uploading to {data['platform_id']} ({data['content_type']})...", "info"
+                f"{PLATFORMS.get(data['platform_id'], {}).get('display_name', data['platform_id'])}: starting web upload",
+                "info",
             )
-            self._start_upload(post_id, tw)
+            start_upload(
+                db=self.db,
+                data_dir=self.data_dir,
+                post_id=post_id,
+                progress_callback=lambda v, phase, status, _tw=tw: _tw.progress_row.set_progress(v, phase, status),
+                done_callback=lambda success, msg, _tw=tw, _pid=post_id: self._on_upload_done(_pid, _tw, success, msg),
+            )
+
+    def _find_existing_post(self, platform_id: str, content_type: str) -> Post | None:
+        for p in self.db.get_posts_for_content(self._content_id):
+            if p.platform_id == platform_id and p.content_type == content_type:
+                return p
+        return None
+
+    def _update_post_fields(self, post: Post, data: dict):
+        post.caption = data.get("caption", "")
+        post.title = data.get("title", "")
+        post.description = data.get("description", "")
+        post.tags = data.get("tags", "")
+        try:
+            self.db._conn.execute(
+                """UPDATE posts SET caption=?, title=?, description=?, tags=?, status='draft'
+                   WHERE id=?""",
+                (post.caption, post.title, post.description, post.tags, post.id),
+            )
+            self.db._conn.commit()
+        except Exception:
+            logger.exception("Failed to update post id=%s", post.id)
+
+    _EMULATOR_LAUNCH_ORDER = [
+        "youtube", "facebook", "tiktok", "instagram",
+    ]
+
+    def _post_via_emulator(self, targets: list):
+        from app.mobile.emulator_config import AndroidEmulatorConfig, MobilePlatform
+        from app.mobile.emulator_worker import EmulatorWorker
+
+        platform_ids = set()
+        for tw in targets:
+            data = tw.get_post_data()
+            platform_ids.add(data["platform_id"])
+
+        platforms = []
+        for pid in self._EMULATOR_LAUNCH_ORDER:
+            for p in MobilePlatform:
+                if p.platform_id == pid and pid in platform_ids:
+                    platforms.append(p)
+                    break
+
+        if not platforms:
+            self.log_message.emit("No matching mobile platforms found.", "warning")
+            return
+
+        content = self.db.get_content(self._content_id)
+        content_file_path = content.file_path if content else None
+
+        config = AndroidEmulatorConfig(avd_name=DEFAULT_EMULATOR_CONFIG["avd_name"])
+
+        thread = QThread()
+        worker = EmulatorWorker(config, platforms, content_file_path=content_file_path)
+        worker.moveToThread(thread)
+        thread.started.connect(worker.run)
+        worker.status_update.connect(
+            lambda msg, lvl: self.log_message.emit(msg, lvl)
+        )
+        worker.finished.connect(self._on_emulator_post_done)
+        worker.confirmation_needed.connect(self._on_emulator_confirmation_needed)
+        worker.finished.connect(thread.quit)
+        worker.finished.connect(worker.deleteLater)
+        thread.finished.connect(thread.deleteLater)
+        thread.finished.connect(self._on_emulator_thread_finished)
+
+        self._emu_thread = thread
+        self._emu_worker = worker
+        thread.start()
+        self.log_message.emit("Opening apps in emulator...", "info")
+
+    def _on_emulator_post_done(self, results):
+        for r in results:
+            if r.success:
+                self.log_message.emit(
+                    f"{r.platform.display_name}: {r.message}", "success"
+                )
+            else:
+                self.log_message.emit(f"{r.platform.display_name}: {r.message}", "error")
+
+    def _on_emulator_thread_finished(self):
+        logger.info("Emulator worker thread finished; clearing references")
+        self._emu_thread = None
+        self._emu_worker = None
+
+    def _on_emulator_confirmation_needed(self, platform_name: str, reason: str):
+        from app.ui.continue_confirm_dialog import ContinueConfirmDialog
+        logger.info("Emulator flow paused on %s: %s", platform_name, reason)
+        dialog = ContinueConfirmDialog(platform_name=platform_name, reason=reason, parent=self)
+        should_continue = dialog.exec() == dialog.DialogCode.Accepted and dialog.should_continue
+        logger.info("User decision for %s: %s", platform_name, "Continue" if should_continue else "Cancel")
+        if self._emu_worker is not None:
+            self._emu_worker.confirmation_received.emit(bool(should_continue))
 
     def _start_upload(self, post_id: int, target_widget: PlatformTargetWidget):
         from app.upload.base import start_upload

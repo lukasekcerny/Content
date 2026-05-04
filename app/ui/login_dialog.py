@@ -33,11 +33,6 @@ class CookieConsentDialog(QDialog):
         btn_row.setSpacing(8)
 
         essential_btn = QPushButton("Essential Only")
-        essential_btn.setStyleSheet(
-            f"QPushButton {{ background-color: {C.bg_card}; color: {C.text_secondary};"
-            f"border: 1px solid {C.border_soft}; border-radius: 8px; padding: 8px 16px; }}"
-            f"QPushButton:hover {{ background-color: {C.bg_card_hover}; }}"
-        )
         essential_btn.clicked.connect(lambda: self._set_choice("essential"))
 
         accept_btn = PrimaryButton("Accept All")

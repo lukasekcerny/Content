@@ -28,14 +28,18 @@ class UploadWorker(QObject):
     def run(self):
         post = self._get_post()
         if not post:
+            logger.error("UploadWorker: post_id=%d not found", self.post_id)
             self.done.emit(False, "Post not found")
             return
 
         content = self.db.get_content(post.content_id)
         if not content:
+            logger.error("UploadWorker: content_id=%d not found for post_id=%d", post.content_id, self.post_id)
             self.done.emit(False, "Content not found")
             return
 
+        logger.info("UploadWorker: starting upload post_id=%d platform=%s type=%s",
+                    self.post_id, post.platform_id, post.content_type)
         self.db.update_post_status(self.post_id, "uploading")
         self.progress.emit(5, "upload", "Starting upload...")
 
@@ -54,6 +58,7 @@ class UploadWorker(QObject):
                 progress_callback=self._on_progress,
             )
             if success:
+                logger.info("UploadWorker: API upload succeeded post_id=%d platform=%s", self.post_id, post.platform_id)
                 self.db.update_post_status(self.post_id, "published")
                 self.done.emit(True, msg)
                 return
@@ -63,9 +68,11 @@ class UploadWorker(QObject):
 
         success, msg = self._browser_upload(post.platform_id, content.file_path, metadata)
         if success:
+            logger.info("UploadWorker: browser upload succeeded post_id=%d platform=%s", self.post_id, post.platform_id)
             self.db.update_post_status(self.post_id, "published")
             self.done.emit(True, msg)
         else:
+            logger.error("UploadWorker: upload failed post_id=%d platform=%s: %s", self.post_id, post.platform_id, msg)
             self.db.update_post_status(self.post_id, "failed", msg)
             self.done.emit(False, msg)
 

@@ -10,6 +10,7 @@ from PySide6.QtGui import QPixmap, QPainter, QPainterPath, QCloseEvent
 from PySide6.QtCore import Qt, QSize, Signal, QObject, QThread
 
 from app.constants import COLORS as C, APP_NAME, PLATFORMS
+from app.ui.components.mode_toggle import ModeToggle
 from app.db.database import Database
 from app.ui.sidebar import Sidebar
 from app.ui.login_dialog import LoginDialog, CookieConsentDialog
@@ -158,10 +159,13 @@ class LoginWorker(QObject):
 
 class MainWindow(QMainWindow):
 
+    app_mode_changed = Signal(str)
+
     def __init__(self, db: Database, data_dir: str, parent=None):
         super().__init__(parent)
         self.db = db
         self.data_dir = data_dir
+        self.app_mode: str = "web"
         self._login_threads: dict[str, QThread] = {}
         self._login_workers: dict[str, LoginWorker] = {}
         self._login_dialogs: dict[str, LoginDialog] = {}
@@ -175,8 +179,7 @@ class MainWindow(QMainWindow):
         self._log_handler = _QtLogHandler(self._log_bridge)
         self._log_handler.setLevel(logging.INFO)
         self._log_handler.setFormatter(logging.Formatter("%(message)s"))
-        for logger_name in ("app.auth.tiktok", "app.browser.manager"):
-            logging.getLogger(logger_name).addHandler(self._log_handler)
+        logging.getLogger("app").addHandler(self._log_handler)
 
         self.setWindowTitle(APP_NAME)
         self.setMinimumSize(900, 600)
@@ -190,6 +193,8 @@ class MainWindow(QMainWindow):
 
         self.sidebar = Sidebar(db=db)
         self.sidebar.platform_connect.connect(self._on_platform_connect)
+        self.sidebar.emulator_clicked.connect(self._show_emulator_page)
+        self.sidebar.app_log_clicked.connect(self._show_app_log_page)
         root_layout.addWidget(self.sidebar)
 
         right_side = QVBoxLayout()
@@ -223,11 +228,8 @@ class MainWindow(QMainWindow):
         layout = QHBoxLayout(header)
         layout.setContentsMargins(20, 0, 20, 0)
 
-        title = QLabel(APP_NAME)
-        title.setProperty("role", "title")
-        title.setStyleSheet(
-            f"color: {C.text_primary}; font-size: 18px; font-weight: 600; background: transparent;"
-        )
+        self._mode_toggle = ModeToggle(current=self.app_mode)
+        self._mode_toggle.mode_changed.connect(self._on_mode_changed)
 
         self._avatar_btn = AvatarButton(40)
         self._avatar_btn.clicked.connect(self._show_profile_picture_page)
@@ -236,16 +238,28 @@ class MainWindow(QMainWindow):
         if pp and pp.file_path:
             self._avatar_btn.set_image(pp.file_path)
 
-        layout.addWidget(title)
-        layout.addStretch()
+        layout.addStretch(1)
+        layout.addWidget(self._mode_toggle)
+        layout.addStretch(1)
         layout.addWidget(self._avatar_btn)
 
         return header
+
+    def _on_mode_changed(self, mode: str):
+        logging.getLogger(__name__).info("App mode changed to: %s", mode)
+        self.app_mode = mode
+        self.app_mode_changed.emit(mode)
+        if hasattr(self, "_detail_page"):
+            self._detail_page.set_mode(mode)
+        if hasattr(self, "_profile_page"):
+            self._profile_page.set_mode(mode)
 
     def _init_pages(self):
         from app.ui.content_grid import ContentGridPage
         from app.ui.content_detail import ContentDetailPage
         from app.ui.profile_picture import ProfilePicturePage
+        from app.ui.emulator_panel import EmulatorPanel
+        from app.ui.app_log_page import AppLogPage
 
         self._grid_page = ContentGridPage(db=self.db, data_dir=self.data_dir)
         self._grid_page.content_clicked.connect(self._show_content_detail)
@@ -255,6 +269,7 @@ class MainWindow(QMainWindow):
         self._detail_page = ContentDetailPage(db=self.db, data_dir=self.data_dir)
         self._detail_page.back_clicked.connect(lambda: self._navigate("grid"))
         self._detail_page.log_message.connect(self._log)
+        self._detail_page.set_mode(self.app_mode)
         self._add_page("detail", self._detail_page)
 
         self._profile_page = ProfilePicturePage(db=self.db, data_dir=self.data_dir)
@@ -262,7 +277,18 @@ class MainWindow(QMainWindow):
         self._profile_page.avatar_changed.connect(self._on_avatar_changed)
         self._profile_page.log_message.connect(self._log)
         self._profile_page.login_requested.connect(self._on_platform_connect)
+        self._profile_page.set_mode(self.app_mode)
         self._add_page("profile", self._profile_page)
+
+        self._emulator_page = EmulatorPanel()
+        self._emulator_page.back_clicked.connect(lambda: self._navigate("grid"))
+        self._emulator_page.log_message.connect(self._log)
+        self._add_page("emulator", self._emulator_page)
+
+        self._app_log_page = AppLogPage(data_dir=self.data_dir)
+        self._app_log_page.back_clicked.connect(lambda: self._navigate("grid"))
+        self._app_log_page.log_message.connect(self._log)
+        self._add_page("app_log", self._app_log_page)
 
         self._stack.setCurrentWidget(self._grid_page)
 
@@ -295,6 +321,13 @@ class MainWindow(QMainWindow):
     def _show_profile_picture_page(self):
         self._profile_page.refresh()
         self._navigate("profile")
+
+    def _show_emulator_page(self):
+        self._navigate("emulator")
+
+    def _show_app_log_page(self):
+        self._app_log_page.refresh()
+        self._navigate("app_log")
 
     def _on_avatar_changed(self, path: str):
         self._avatar_btn.set_image(path)
@@ -393,5 +426,9 @@ class MainWindow(QMainWindow):
             self._avatar_btn.set_image(pp.file_path)
 
     def closeEvent(self, event: QCloseEvent):
+        import traceback
+        _logger = logging.getLogger(__name__)
+        _logger.info("MainWindow.closeEvent fired; spontaneous=%s", event.spontaneous())
+        _logger.debug("closeEvent stack:\n%s", "".join(traceback.format_stack()))
         self._browser_manager.shutdown()
         super().closeEvent(event)
